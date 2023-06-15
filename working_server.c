@@ -54,12 +54,14 @@ int main()
     struct sockaddr_in server_addr;
     char msg[BUF_SIZE];
     int msg_len;
-    int challenge, difficulty, nonce = 0;
+    char challenge[BUF_SIZE];
+    int difficulty;
+    long nonce, start_num;
 
     sock = socket(PF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         printf("socket() error\n");
-        exit(0);
+        exit(1);
     }
     
     memset(&server_addr, 0, sizeof(server_addr));
@@ -69,7 +71,7 @@ int main()
 
     if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
         printf("connect() error\n");
-        exit(0);
+        exit(1);
     }
     else
         printf("Connected to main server\n");
@@ -77,25 +79,25 @@ int main()
     // Main Server로부터 학번(challenge), 난이도 수신
     msg_len = read(sock, msg, BUF_SIZE-1);
     msg[msg_len] = '\0';
-    sscanf(msg, "%d %d", &challenge, &difficulty);  // 문자열로부터 학번과 난이도 추출
-    printf("Challenge: %d, Difficulty: %d\n", challenge, difficulty);
+    sscanf(msg, "%s %d %ld", challenge, &difficulty, &start_num);  // 문자열로부터 학번과 난이도 추출
+    printf("Challenge: %s, Difficulty: %d, start_nonce: %ld\n", challenge, difficulty, start_num);
 
     // PoW(작업증명) 시작
     unsigned char text[64];
     unsigned char hash[SHA256_DIGEST_LENGTH];
     while(1) {
-        sprintf(text, "%d%d", challenge, nonce);
+        sprintf(text, "%s%ld", challenge, nonce);
         compute_SHA256(hash, text, strlen(text));
         print_hash(hash);
         if(is_valid(hash, difficulty)) {
-            sprintf(msg, "Success! Nonce: %d\n", nonce);
-            printf("Success! Nonce: %d\n", nonce);
-            write(sock, msg, sizeof(msg));  // 결과를 Main Server에게 전송
+            sprintf(msg, "Success! Nonce: %ld\n", nonce);
+            printf("Success! Nonce: %ld\n", nonce);
+            write(sock, msg, sizeof(msg)+1);  // 결과를 Main Server에게 전송
             break;
         }
         nonce++;
     }
-
+    
     close(sock);
 
     return 0;
