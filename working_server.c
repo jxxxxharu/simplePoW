@@ -56,7 +56,7 @@ int main()
     int msg_len;
     char challenge[BUF_SIZE];
     int difficulty;
-    long nonce, start_num;
+    long nonce = -1, start_num, n;
 
     sock = socket(PF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
@@ -85,19 +85,22 @@ int main()
     // PoW(작업증명) 시작
     unsigned char text[64];
     unsigned char hash[SHA256_DIGEST_LENGTH];
+    n = start_num;
     while(1) {
-        sprintf(text, "%s%ld", challenge, nonce);
+        sprintf(text, "%s%ld", challenge, n);
         compute_SHA256(hash, text, strlen(text));
         print_hash(hash);
         if(is_valid(hash, difficulty)) {
+            nonce = n;
             sprintf(msg, "Success! Nonce: %ld\n", nonce);
             printf("Success! Nonce: %ld\n", nonce);
             write(sock, msg, sizeof(msg)+1);  // 결과를 Main Server에게 전송
+            printf("Challenge: %s, Difficulty: %d, start_nonce: %ld\n", challenge, difficulty, start_num);
             break;
         }
-        nonce++;
+        n++;
     }
-    
+
     close(sock);
 
     return 0;
