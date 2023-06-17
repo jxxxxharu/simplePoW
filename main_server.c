@@ -27,9 +27,9 @@ int main()
 
     char challenge[BUF_SIZE];
     int difficulty;
-    printf("Enter Challenge: ");
+    printf("Enter Challenge>> ");
     scanf("%s", challenge);  // 학번 입력
-    printf("Enter Difficulty: ");
+    printf("Enter Difficulty>> ");
     scanf("%d", &difficulty);  // 난이도 입력
 
     server_sock = socket(PF_INET, SOCK_STREAM, 0);
@@ -95,6 +95,13 @@ int main()
 
             double time_elapsed = ((double)end.tv_sec - start.tv_sec) + ((double)end.tv_usec - start.tv_usec) * 1e-6;
             printf("* Time for PoW: %f seconds\n", time_elapsed);
+
+            // nonce를 찾은 뒤, 다른 Working Server에게 스톱 싸인 전송
+            for (int j = 0; j < MAX_CLIENTS; j++) {
+                if (j != i) {
+                    write(client_socks[j], "STOP", sizeof("STOP"));
+                }
+            }
 
             close(client_socks[i]);
             FD_CLR(client_socks[i], &read_fds);

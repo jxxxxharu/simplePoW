@@ -6,10 +6,19 @@
 #include <sys/socket.h>
 #include <openssl/sha.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 #define SERVER_IP "127.0.0.1"
 #define PORT 8080
 #define BUF_SIZE 1024
+
+pthread_mutex_t mutex;
+volatile int stop_sign = 0;  // critical section
+
+int sock;
+char challenge[BUF_SIZE];
+int difficulty;
+long nonce = -1, start_num, n;
 
 void compute_SHA256(unsigned char* hash, unsigned char* data, size_t length) {
     SHA256_CTX sha256;
@@ -48,15 +57,67 @@ void print_hash(unsigned char* hash) {
     printf("\n");
 }
 
+// PoW(작업증명) 쓰레드
+void *PoW(void *args) {
+    unsigned char text[64];
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    char msg[BUF_SIZE];
+
+    n = start_num;
+    while(1) {
+        sprintf(text, "%s%ld", challenge, n);
+        compute_SHA256(hash, text, strlen(text));
+        
+        pthread_mutex_lock(&mutex);
+        if(stop_sign) {
+            pthread_mutex_unlock(&mutex);
+            pthread_exit(0);
+        }
+        pthread_mutex_unlock(&mutex);
+
+        if(is_valid(hash, difficulty)) {
+            nonce = n;
+            printf("\n");
+            print_hash(hash);
+            sprintf(msg, "Success! Nonce: %ld\n", nonce);
+            printf("%s", msg);
+            write(sock, msg, strlen(msg)+1);
+            pthread_exit(0);
+        }
+        n++;
+    }
+    return NULL;
+}
+
+// 스톱 싸인 수신 쓰레드
+void *listen_stop_sign(void *socket) {
+    int sock = *(int*)socket;
+    char buf[BUF_SIZE];
+    
+    while(1) {
+        int buf_len = read(sock, buf, BUF_SIZE-1);
+        if(buf_len > 0) {
+            if(strcmp(buf, "STOP") == 0) {
+                pthread_mutex_lock(&mutex);
+                stop_sign = 1;
+                pthread_mutex_unlock(&mutex);
+                printf("\nComputation stopped due to stop sign.\n");
+                break;
+            }
+        }
+    }
+    return NULL;
+}
+
 int main()
 {
-    int sock;
     struct sockaddr_in server_addr;
     char msg[BUF_SIZE];
     int msg_len;
-    char challenge[BUF_SIZE];
-    int difficulty;
-    long nonce = -1, start_num, n;
+    
+    pthread_t stop_thread;
+    pthread_t pow_thread;
+    pthread_mutex_init(&mutex, NULL);
 
     sock = socket(PF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
@@ -82,25 +143,11 @@ int main()
     sscanf(msg, "%s %d %ld", challenge, &difficulty, &start_num);  // 문자열로부터 학번과 난이도 추출
     printf("Challenge: %s, Difficulty: %d, start_nonce: %ld\n", challenge, difficulty, start_num);
 
-    // PoW(작업증명) 시작
-    unsigned char text[64];
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    n = start_num;
-    while(1) {
-        sprintf(text, "%s%ld", challenge, n);
-        compute_SHA256(hash, text, strlen(text));
-        print_hash(hash);
-        if(is_valid(hash, difficulty)) {
-            nonce = n;
-            sprintf(msg, "Success! Nonce: %ld\n", nonce);
-            printf("Success! Nonce: %ld\n", nonce);
-            write(sock, msg, sizeof(msg)+1);  // 결과를 Main Server에게 전송
-            printf("Challenge: %s, Difficulty: %d, start_nonce: %ld\n", challenge, difficulty, start_num);
-            break;
-        }
-        n++;
-    }
+    pthread_create(&pow_thread, NULL, PoW, NULL);
+    pthread_create(&stop_thread, NULL, listen_stop_sign, (void *)&sock);
 
+    pthread_join(pow_thread, NULL);
+    pthread_mutex_destroy(&mutex);
     close(sock);
 
     return 0;
