@@ -18,7 +18,7 @@ volatile int stop_sign = 0;  // critical section
 int sock;
 char challenge[BUF_SIZE];
 int difficulty;
-long nonce = -1, start_num, n;
+long start_num;
 
 void compute_SHA256(unsigned char* hash, unsigned char* data, size_t length) {
     SHA256_CTX sha256;
@@ -63,8 +63,7 @@ void *PoW(void *args) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
     char msg[BUF_SIZE];
 
-    n = start_num;
-    while(1) {
+    for(long n=start_num; ; n++) {
         sprintf(text, "%s%ld", challenge, n);
         compute_SHA256(hash, text, strlen(text));
         
@@ -76,15 +75,13 @@ void *PoW(void *args) {
         pthread_mutex_unlock(&mutex);
 
         if(is_valid(hash, difficulty)) {
-            nonce = n;
             printf("\n");
             print_hash(hash);
-            sprintf(msg, "Success! Nonce: %ld\n", nonce);
+            sprintf(msg, "Success! Nonce: %ld\n", n);
             printf("%s", msg);
             write(sock, msg, strlen(msg)+1);
             pthread_exit(0);
         }
-        n++;
     }
     return NULL;
 }
