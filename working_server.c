@@ -7,18 +7,22 @@
 #include <openssl/sha.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <limits.h>
 
 #define SERVER_IP "127.0.0.1"
 #define PORT 8080
 #define BUF_SIZE 1024
+#define THREADS_NUM 5
 
-pthread_mutex_t mutex;
+pthread_mutex_t stop_mutex, pow_mutex;
 volatile int stop_sign = 0;  // critical section
+volatile int found = 0;  // critical section (nonce를 찾았는 지 여부)
 
 int sock;
 char challenge[BUF_SIZE];
 int difficulty;
 long start_num;
+// long offset = (LONG_MAX - start_num + 1) / THREADS_NUM;
 
 void compute_SHA256(unsigned char* hash, unsigned char* data, size_t length) {
     SHA256_CTX sha256;
@@ -58,29 +62,43 @@ void print_hash(unsigned char* hash) {
 }
 
 // PoW(작업증명) 쓰레드
-void *PoW(void *args) {
+void *PoW(void *arg) {
+    long tid = (long)arg;
     unsigned char text[64];
     unsigned char hash[SHA256_DIGEST_LENGTH];
     char msg[BUF_SIZE];
 
-    for(long n=start_num; ; n++) {
+    for(long n=(start_num+tid); n <= LONG_MAX; n+=THREADS_NUM) {
         sprintf(text, "%s%ld", challenge, n);
         compute_SHA256(hash, text, strlen(text));
         
-        pthread_mutex_lock(&mutex);
+        pthread_mutex_lock(&stop_mutex);
         if(stop_sign) {
-            pthread_mutex_unlock(&mutex);
+            pthread_mutex_unlock(&stop_mutex);
             pthread_exit(0);
         }
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&stop_mutex);
+        pthread_mutex_lock(&pow_mutex);
+        if(found) {
+            pthread_mutex_unlock(&pow_mutex);
+            pthread_exit(0);
+        }
+        pthread_mutex_unlock(&pow_mutex);
 
         if(is_valid(hash, difficulty)) {
-            printf("\n");
-            print_hash(hash);
-            sprintf(msg, "Success! Nonce: %ld\n", n);
-            printf("%s", msg);
-            write(sock, msg, strlen(msg)+1);
-            pthread_exit(0);
+            pthread_mutex_lock(&pow_mutex);
+            if(!found) {
+                found = 1;
+                pthread_mutex_unlock(&pow_mutex);
+                printf("\n");
+                print_hash(hash);
+                sprintf(msg, "Success! Nonce: %ld\n", n);
+                printf("%s", msg);
+                printf("Among #0~#%d threads, thread #%ld found the nonce!!\n", THREADS_NUM-1, tid);
+                write(sock, msg, strlen(msg)+1);
+                pthread_exit(0);
+            }
+            pthread_mutex_unlock(&pow_mutex);
         }
     }
     return NULL;
@@ -95,9 +113,9 @@ void *listen_stop_sign(void *socket) {
         int buf_len = read(sock, buf, BUF_SIZE-1);
         if(buf_len > 0) {
             if(strcmp(buf, "STOP") == 0) {
-                pthread_mutex_lock(&mutex);
+                pthread_mutex_lock(&stop_mutex);
                 stop_sign = 1;
-                pthread_mutex_unlock(&mutex);
+                pthread_mutex_unlock(&stop_mutex);
                 printf("\nComputation stopped due to stop sign.\n");
                 break;
             }
@@ -112,9 +130,10 @@ int main()
     char msg[BUF_SIZE];
     int msg_len;
     
+    pthread_t threads[THREADS_NUM];
     pthread_t stop_thread;
-    pthread_t pow_thread;
-    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&stop_mutex, NULL);
+    pthread_mutex_init(&pow_mutex, NULL);
 
     sock = socket(PF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
@@ -140,11 +159,16 @@ int main()
     sscanf(msg, "%s %d %ld", challenge, &difficulty, &start_num);  // 문자열로부터 학번과 난이도 추출
     printf("Challenge: %s, Difficulty: %d, start_nonce: %ld\n", challenge, difficulty, start_num);
 
-    pthread_create(&pow_thread, NULL, PoW, NULL);
+    for(long tid=0; tid < THREADS_NUM; tid++) {
+        pthread_create(&threads[tid], NULL, PoW, (void *)tid);
+    }
     pthread_create(&stop_thread, NULL, listen_stop_sign, (void *)&sock);
 
-    pthread_join(pow_thread, NULL);
-    pthread_mutex_destroy(&mutex);
+    for(int i=0; i < THREADS_NUM; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    pthread_mutex_destroy(&stop_mutex);
+    pthread_mutex_destroy(&pow_mutex);
     close(sock);
 
     return 0;
