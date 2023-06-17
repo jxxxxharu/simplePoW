@@ -7,7 +7,7 @@
 #include <sys/time.h>
 #include <limits.h>
 
-#define PORT 8080
+#define PORT 1255
 #define BUF_SIZE 1024
 #define MAX_CLIENTS 2
 

@@ -9,8 +9,8 @@
 #include <pthread.h>
 #include <limits.h>
 
-#define SERVER_IP "127.0.0.1"
-#define PORT 8080
+#define SERVER_IP "119.192.210.203"
+#define PORT 1255
 #define BUF_SIZE 1024
 #define THREADS_NUM 5
 
