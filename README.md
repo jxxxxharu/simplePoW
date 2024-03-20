@@ -87,7 +87,8 @@ Working Server는 멀티쓰레딩을 사용하여 PoW 연산을 병렬로 처리
 - 윈도우 방화벽: 특정 포트를 통한 인바운드 연결을 허용하도록 인바운드 규칙 생성
 - 가상 머신 NAT 설정: 가상 머신의 네트워크 어댑터를 NAT 모드로 해 외부 연결 허용하고 포트 포워딩 설정
 
-<figure style="text-align: center;"><img src="https://github.com/jxxxxharu/jxxxxharu/assets/80589294/b998522b-cb79-44c5-a4b3-958cb2bb14dc" alt="서버 간 통신 네트워크 구조" width="650px"><figcaption style="text-align: center;">서버 간 통신 네트워크 구조</figcaption></figure><br>
+<img src="https://github.com/jxxxxharu/jxxxxharu/assets/80589294/b998522b-cb79-44c5-a4b3-958cb2bb14dc" alt="서버 간 통신 네트워크 구조" width="650px"><br>
+ㄴ 서버 간 통신 네트워크 구조
 
 </p>
 
